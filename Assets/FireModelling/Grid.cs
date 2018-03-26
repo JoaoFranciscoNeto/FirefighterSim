@@ -15,27 +15,33 @@ namespace FireModelling
 
         public GridCell[,] cellGrid;
 
+        Texture2D visTexture;
+
+        public MeshRenderer visualizer;
+
         public int VisualizationMode = 0;
 
         // Use this for initialization
         void Start()
         {
-            cellGrid = new GridCell[100, 100];
-
-            for (int x = 0; x < 100; x++)
+            cellGrid = new GridCell[10, 10];
+            visTexture = new Texture2D(10, 10);
+            visualizer.material.mainTexture = visTexture;
+            for (int x = 0; x < 10; x++)
             {
-                for (int y = 0; y < 100; y++)
+                for (int y = 0; y < 10; y++)
                 {
                     
                     cellGrid[x, y] = Instantiate(cellPrefab, new Vector3(x, 0, y), Quaternion.identity, transform).GetComponent<GridCell>();
                     cellGrid[x, y].grid = this;
+                    cellGrid[x, y].position = new Vector2(x, y);
                 }
             }
 
-            cellGrid[Random.Range(0, 100), Random.Range(0, 100)].state = GridCell.State.OnFire;
+            cellGrid[2, 2].state = GridCell.State.Burning;
         }
 
-        float timeToStep = 1.0f;
+        float timeToStep = .5f;
 
         // Update is called once per frame
         void Update()
@@ -43,23 +49,32 @@ namespace FireModelling
             timeToStep -= Time.deltaTime;
             if (timeToStep<=0)
             {
-
                 SimulationTick();
-                timeToStep = 1.0f;
+                timeToStep = .2f;
             }
         }
 
         void SimulationTick()
         {
-            GridCell[,] newGrid = new GridCell[100, 100];
-            for (int x = 0; x < 100; x++)
+            GridCell[,] newGrid = new GridCell[10, 10];
+            for (int x = 0; x < 10; x++)
             {
-                for (int y = 0; y < 100; y++)
+                for (int y = 0; y < 10; y++)
                 {
-                    newGrid[x, y] = cellGrid[x, y].SimulationTick();
+                    cellGrid[x, y].SimulationTick();
+                    visTexture.SetPixel(x, y, cellGrid[x, y].CellColor());
                 }
             }
-            cellGrid = newGrid.Clone() as GridCell[,];
+
+            visTexture.Apply();
+
+            for (int x = 0; x < 10; x++)
+            {
+                for (int y = 0; y < 10; y++)
+                {
+                    cellGrid[x, y].UpdateInfo();
+                }
+            }
         }
 
 

@@ -13,135 +13,172 @@ namespace FireModelling
 
         public enum State
         {
-            Clear,
-            OnFire,
-            Burnt
+            Normal,
+            Warming,
+            Burning,
+            Inactive
         }
 
-        public class Info
+        public class CellData
         {
-            public float Temperature;
-            public float IgnPoint;
-            public float Fuel;
-            
-
+            public float HeatThreshold;
+            public float IgnitionThreshold;
+            public float FuelReserves;
         }
+
 
         public State state;
-        public Info cellInfo;
-        Info newInfo;
+        State newState;
+
+        public CellData cellData;
         public Vector2 position;
+
+        public float Heat = 20;
+        float newHeat;
 
         private void Awake()
         {
-            this.state = State.Clear;
-            cellInfo = new Info();
+            state = State.Normal;
+            newState = State.Normal;
 
-            cellInfo.Temperature = 28;
-            cellInfo.IgnPoint = 100;
-            cellInfo.Fuel = 200;
+            cellData = new CellData();
+
+            cellData.HeatThreshold = .06f;
+            cellData.IgnitionThreshold = 15;
+            cellData.FuelReserves = 19;
+
+            Heat = 0;
         }
-        
+
         GridCell[] GetNeighbours()
         {
-            List<GridCell> neighbours = new List<GridCell>();
+            GridCell[] neigh = new GridCell[8];
 
+            // WW
             if (position.x > 0)
-                neighbours.Add(grid.cellGrid[(int)position.x - 1, (int)position.y]);
+                neigh[0] = grid.cellGrid[(int)position.x - 1, (int)position.y];
+            // EE
             if (position.x < grid.cellGrid.GetLength(0) - 1)
-                neighbours.Add(grid.cellGrid[(int)position.x + 1, (int)position.y]);
+                neigh[1] = grid.cellGrid[(int)position.x + 1, (int)position.y];
+            // NN
             if (position.y > 0)
-                neighbours.Add(grid.cellGrid[(int)position.x, (int)position.y - 1]);
+                neigh[2] = grid.cellGrid[(int)position.x, (int)position.y - 1];
+            // SS
             if (position.y < grid.cellGrid.GetLength(1) - 1)
-                neighbours.Add(grid.cellGrid[(int)position.x, (int)position.y + 1]);
+                neigh[3] = grid.cellGrid[(int)position.x, (int)position.y + 1];
+            // NW
+            if (position.x > 0 && position.y > 0)
+                neigh[4] = grid.cellGrid[(int)position.x - 1, (int)position.y - 1];
+            // SW
+            if (position.x > 0 && position.y < grid.cellGrid.GetLength(1) - 1)
+                neigh[5] = grid.cellGrid[(int)position.x - 1, (int)position.y + 1];
+            // NE
+            if (position.x < grid.cellGrid.GetLength(0) - 1 && position.y > 0)
+                neigh[6] = grid.cellGrid[(int)position.x + 1, (int)position.y - 1];
+            // SE
+            if (position.x < grid.cellGrid.GetLength(0) - 1 && position.y < grid.cellGrid.GetLength(1) - 1)
+                neigh[7] = grid.cellGrid[(int)position.x + 1, (int)position.y + 1];
 
-            return neighbours.ToArray();
+            return neigh;
         }
+
+        static float alpha = 1;
+        static float beta = Mathf.Sqrt(2);
+
+        static float temperature = 1;
+        static float humidity = 1;
 
         public GridCell SimulationTick()
         {
-            newInfo = Clone(cellInfo);
+            GridCell[] neigh = GetNeighbours();
 
-            newInfo.Temperature = UpdateTemperature();
-
-            switch (state)
+            if (state!= State.Inactive)
             {
-                case State.Clear:
-                    if (newInfo.Temperature >= newInfo.IgnPoint)
-                        state = State.OnFire;
-                    break;
-                case State.OnFire:
-                    newInfo.Temperature += 50;
+                newState = state;
 
-                    newInfo.Fuel -= 10;
-                    if (newInfo.Fuel <= 0)
-                    {
-                        newInfo.Fuel = 0;
-                        state = State.Burnt;
-                    }
-                    break;
+
+                float A = alpha * (
+                    ((neigh[0] && neigh[0].state == State.Burning) ? neigh[0].Heat : 0) +
+                    ((neigh[1] && neigh[1].state == State.Burning) ? neigh[1].Heat : 0) +
+                    ((neigh[2] && neigh[2].state == State.Burning) ? neigh[2].Heat : 0) +
+                    ((neigh[3] && neigh[3].state == State.Burning) ? neigh[3].Heat : 0));
+
+                float B = beta * (
+                    ((neigh[4] && neigh[4].state == State.Burning) ? neigh[4].Heat : 0) +
+                    ((neigh[5] && neigh[5].state == State.Burning) ? neigh[5].Heat : 0) +
+                    ((neigh[6] && neigh[6].state == State.Burning) ? neigh[6].Heat : 0) +
+                    ((neigh[7] && neigh[7].state == State.Burning) ? neigh[7].Heat : 0));
+
+
+                newHeat = temperature * humidity * (Heat + A + B);
+                if (position == Vector2.zero)
+                {
+                    Debug.Log(newHeat);
+                }
+
+
+                if (state == State.Normal && newHeat >= cellData.HeatThreshold && newHeat < cellData.IgnitionThreshold)
+                    newState = State.Warming;
+                else if (state == State.Warming && newHeat >= cellData.IgnitionThreshold)
+                    newState = State.Burning;
+
+                if (state == State.Burning)
+                {
+                    newHeat += 1;
+                    cellData.FuelReserves -= 1;
+                    if (cellData.FuelReserves <= 0)
+                        newState = State.Inactive;
+                }
+
+
+            } else
+            {
+                newHeat = Heat;
+                newState = State.Inactive;
             }
 
 
             return this;
         }
 
-        public static float StefanBoltzman = 5.6703e-8f;
-
-        float UpdateTemperature()
-        {
-            float temp = cellInfo.Temperature;
-            foreach (GridCell neighbour in GetNeighbours())
-            {
-                temp += StefanBoltzman * (Mathf.Pow(neighbour.cellInfo.Temperature, 4) - Mathf.Pow(cellInfo.Temperature, 4));
-            }
-            Debug.Log(temp);
-            return temp;
-        }
 
         public void UpdateInfo()
         {
-            cellInfo = Clone(newInfo);
+            Heat = newHeat;
+
+
+            state = newState;
         }
 
-        private void OnDrawGizmos()
+        public Color CellColor()
         {
-            switch(grid.VisualizationMode)
+            switch (grid.VisualizationMode)
             {
                 case 0:
                     switch (state)
                     {
-                        case State.Clear:
-                            Gizmos.color = Color.green;
-                            break;
-                        case State.Burnt:
-                            Gizmos.color = Color.black;
-                            break;
-                        case State.OnFire:
-                            Gizmos.color = Color.red;
-                            break;
+                        case State.Normal:
+                            return Color.green;
+                        case State.Warming:
+                            return Color.yellow;
+                        case State.Burning:
+                            return Color.red;
+                        case State.Inactive:
+                            return Color.black;
                     }
                     break;
                 case 1:
-                    Gizmos.color = Color.Lerp(Color.green, Color.red, cellInfo.Temperature / 100f);
-                    break;
-
-
+                    return Color.Lerp(Color.blue, Color.red, Heat / 100f);
+                default:
+                    return Color.white;
             }
-
-            Gizmos.DrawCube(transform.position, Vector3.one * .95f);
+            return Color.white;
         }
-
 
         public static T Clone<T>(T source)
         {
             var serialized = JsonConvert.SerializeObject(source);
             return JsonConvert.DeserializeObject<T>(serialized);
-        }
-
-        public float CelsiusToKelvin(float celsius)
-        {
-            return celsius + 273.15f;
         }
     }
 }

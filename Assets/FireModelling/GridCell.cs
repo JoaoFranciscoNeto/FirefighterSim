@@ -13,41 +13,36 @@ namespace FireModelling
 
         public enum State
         {
-            Normal,
-            Warming,
+            Unburned,
+            EarlyBurning,
             Burning,
-            Inactive
+            Extinguishing,
+            Extinguished
         }
 
         public class CellData
         {
-            public float HeatThreshold;
-            public float IgnitionThreshold;
-            public float FuelReserves;
+            public float Altitude;
         }
 
 
         public State state;
         State newState;
+        float stateVal = 0;
 
         public CellData cellData;
         public Vector2 position;
-
-        public float Heat = 20;
-        float newHeat;
+        
 
         private void Awake()
         {
-            state = State.Normal;
-            newState = State.Normal;
+            state = State.Unburned;
+            newState = State.Unburned;
 
             cellData = new CellData();
 
-            cellData.HeatThreshold = .06f;
-            cellData.IgnitionThreshold = 15;
-            cellData.FuelReserves = 19;
-
-            Heat = 0;
+            cellData.Altitude = 10f;
+            
         }
 
         GridCell[] GetNeighbours()
@@ -87,67 +82,113 @@ namespace FireModelling
 
         static float temperature = 1;
         static float humidity = 1;
+        
 
-        public GridCell SimulationTick()
+        public void SimulationTick()
         {
-            GridCell[] neigh = GetNeighbours();
+            GridCell[] n = GetNeighbours();
 
-            if (state!= State.Inactive)
+            switch (state)
             {
-                newState = state;
+                case State.Unburned:
+                    bool neighbourOnFire = false;
+                    foreach (GridCell neighbour in n)
+                    {
+                        if (neighbour != null && neighbour.state == State.Burning)
+                        {
+                            neighbourOnFire = true;
+                            break;
+                        }
+                    }
 
+                    if (neighbourOnFire)
+                    {
+                        stateVal += Eq2(n);
 
-                float A = alpha * (
-                    ((neigh[0] && neigh[0].state == State.Burning) ? neigh[0].Heat : 0) +
-                    ((neigh[1] && neigh[1].state == State.Burning) ? neigh[1].Heat : 0) +
-                    ((neigh[2] && neigh[2].state == State.Burning) ? neigh[2].Heat : 0) +
-                    ((neigh[3] && neigh[3].state == State.Burning) ? neigh[3].Heat : 0));
+                        state = (State)Mathf.FloorToInt(stateVal);
+                    }
 
-                float B = beta * (
-                    ((neigh[4] && neigh[4].state == State.Burning) ? neigh[4].Heat : 0) +
-                    ((neigh[5] && neigh[5].state == State.Burning) ? neigh[5].Heat : 0) +
-                    ((neigh[6] && neigh[6].state == State.Burning) ? neigh[6].Heat : 0) +
-                    ((neigh[7] && neigh[7].state == State.Burning) ? neigh[7].Heat : 0));
+                    break;
+                case State.EarlyBurning:
+                    state = State.Burning;
+                    break;
+                case State.Burning:
+                    bool neighbourBurning = true;
+                    foreach (GridCell neighbour in n)
+                    {
+                        if (neighbour != null && neighbour.state < State.Burning)
+                        {
+                            neighbourBurning = false;
+                            break;
+                        }
+                    }
 
-
-                newHeat = temperature * humidity * (Heat + A + B);
-                if (position == Vector2.zero)
-                {
-                    Debug.Log(newHeat);
-                }
-
-
-                if (state == State.Normal && newHeat >= cellData.HeatThreshold && newHeat < cellData.IgnitionThreshold)
-                    newState = State.Warming;
-                else if (state == State.Warming && newHeat >= cellData.IgnitionThreshold)
-                    newState = State.Burning;
-
-                if (state == State.Burning)
-                {
-                    newHeat += 1;
-                    cellData.FuelReserves -= 1;
-                    if (cellData.FuelReserves <= 0)
-                        newState = State.Inactive;
-                }
-
-
-            } else
-            {
-                newHeat = Heat;
-                newState = State.Inactive;
+                    if (neighbourBurning)
+                    {
+                        state = State.Extinguishing;
+                    }
+                    break;
+                case State.Extinguishing:
+                    state = State.Extinguished;
+                    break;
             }
-
-
-            return this;
+            
         }
 
 
+        float Eq2(GridCell[] neighbours)
+        {
+
+            float rSum = 0;
+
+            for (int i = 0; i < 8; i++)
+            {
+                GridCell n = neighbours[i];
+                if (n!=null)
+                {
+
+                    rSum += Eq1(n) * ((n.state == State.Burning) ? 1 : 0);
+
+                }
+            }
+
+
+            return rSum * grid.deltaT / grid.L;
+        }
+
+        float a = 0.03f;
+        float b = 0.05f;
+        float c = 0.01f;
+        float d = 0.3f;
+
+        float T = 25;
+        float v = 5;
+        float RH = 20;
+
+        float Eq1(GridCell n)
+        {
+            float R0 = a * T + b * W() + c * (100 - RH) - d;
+            float k = Kphi(n.position - position);
+            
+            return R0 * k;
+        }
+
+        float W()
+        {
+            return (int)(v / 0.836f) ^ (2 / 3);
+        }
+
+        float Kphi(Vector2 spreadDir)
+        {
+
+            return Mathf.Exp(.1783f * v * Mathf.Cos(Vector2.Angle(spreadDir, grid.GlobalWind) * Mathf.Deg2Rad));
+        }
+
         public void UpdateInfo()
         {
-            Heat = newHeat;
 
 
-            state = newState;
+            //state = newState;
         }
 
         public Color CellColor()
@@ -157,22 +198,24 @@ namespace FireModelling
                 case 0:
                     switch (state)
                     {
-                        case State.Normal:
+                        case State.Unburned:
                             return Color.green;
-                        case State.Warming:
+                        case State.EarlyBurning:
                             return Color.yellow;
                         case State.Burning:
                             return Color.red;
-                        case State.Inactive:
+                        case State.Extinguishing:
+                            return Color.gray;
+                        case State.Extinguished:
                             return Color.black;
+                        default:
+                            return Color.blue;
                     }
-                    break;
                 case 1:
-                    return Color.Lerp(Color.blue, Color.red, Heat / 100f);
+                    return Color.blue;
                 default:
                     return Color.white;
             }
-            return Color.white;
         }
 
         public static T Clone<T>(T source)

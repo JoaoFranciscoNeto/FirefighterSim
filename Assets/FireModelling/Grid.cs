@@ -21,15 +21,18 @@ namespace FireModelling
 
         public int VisualizationMode = 0;
 
+        public int gridSize = 100;
+
         // Use this for initialization
         void Start()
         {
-            cellGrid = new GridCell[10, 10];
-            visTexture = new Texture2D(10, 10);
+            InitValues();
+            cellGrid = new GridCell[gridSize, gridSize];
+            visTexture = new Texture2D(gridSize, gridSize);
             visualizer.material.mainTexture = visTexture;
-            for (int x = 0; x < 10; x++)
+            for (int x = 0; x < gridSize; x++)
             {
-                for (int y = 0; y < 10; y++)
+                for (int y = 0; y < gridSize; y++)
                 {
                     
                     cellGrid[x, y] = Instantiate(cellPrefab, new Vector3(x, 0, y), Quaternion.identity, transform).GetComponent<GridCell>();
@@ -38,28 +41,45 @@ namespace FireModelling
                 }
             }
 
-            cellGrid[2, 2].state = GridCell.State.Burning;
+            cellGrid[Random.Range(0, gridSize), Random.Range(0, gridSize)].state = GridCell.State.Burning;
         }
 
-        float timeToStep = .5f;
+        float timeToStep = .125f;
+        
+        public static float[] Kphi;
+
+        public float deltaT;
+
+        public Vector2 GlobalWind;
+
+        float m = .125f;
+        public float L = 30f;
+        float Rmax = 50f; 
+
+        void InitValues()
+        {
+            deltaT = m * L / Rmax;
+            GlobalWind = Vector2.up.normalized;
+        }
 
         // Update is called once per frame
         void Update()
         {
+            SimulationTick();
+            /*
             timeToStep -= Time.deltaTime;
             if (timeToStep<=0)
             {
                 SimulationTick();
-                timeToStep = .2f;
-            }
+                timeToStep = .125f;
+            }*/
         }
 
         void SimulationTick()
         {
-            GridCell[,] newGrid = new GridCell[10, 10];
-            for (int x = 0; x < 10; x++)
+            for (int x = 0; x < gridSize; x++)
             {
-                for (int y = 0; y < 10; y++)
+                for (int y = 0; y < gridSize; y++)
                 {
                     cellGrid[x, y].SimulationTick();
                     visTexture.SetPixel(x, y, cellGrid[x, y].CellColor());
@@ -68,21 +88,19 @@ namespace FireModelling
 
             visTexture.Apply();
 
-            for (int x = 0; x < 10; x++)
+            for (int x = 0; x < gridSize; x++)
             {
-                for (int y = 0; y < 10; y++)
+                for (int y = 0; y < gridSize; y++)
                 {
                     cellGrid[x, y].UpdateInfo();
                 }
             }
         }
-
-
-
-        public void OnVisualizationChange(int newState)
+        
+        public void OnVisualizationChange(int newMode)
         {
-            Debug.Log("Changed visualization to " + newState);
-            VisualizationMode = newState;
+            Debug.Log("Changed visualization to " + newMode);
+            VisualizationMode = newMode;
         }
 
     }
